@@ -61,6 +61,17 @@ fn test_expire_value() {
 }
 
 #[test]
+fn test_reset_ttl() {
+    let duration = Duration::from_millis(10);
+    let mut cache = TtlCache::new(1);
+    cache.insert("1", 10, duration);
+    sleep(Duration::from_millis(5));
+    cache.reset_ttl("1");
+    sleep(Duration::from_millis(6));
+    assert_eq!(cache.contains_key("1"), true);
+}
+
+#[test]
 fn test_pop() {
     let duration = Duration::from_secs(60 * 60);
     let mut cache = TtlCache::new(2);
