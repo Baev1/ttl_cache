@@ -108,6 +108,7 @@ impl<'a, K: 'a + Hash + Eq, V: 'a, S: BuildHasher> VacantEntry<'a, K, V, S> {
 struct InternalEntry<V> {
     value: V,
     expiration: Instant,
+    duration: Duration,
 }
 
 impl<V> InternalEntry<V> {
@@ -115,11 +116,16 @@ impl<V> InternalEntry<V> {
         InternalEntry {
             value: v,
             expiration: Instant::now() + duration,
+            duration
         }
     }
 
     fn is_expired(&self) -> bool {
         Instant::now() > self.expiration
+    }
+
+    fn reset_duration(&mut self) {
+        self.expiration = Instant::now() + self.duration
     }
 }
 
@@ -300,6 +306,77 @@ impl<K: Eq + Hash, V, S: BuildHasher> TtlCache<K, V, S> {
             }
         }
         to_ret
+    }
+
+    /// Returns a mutable reference to the value corresponding to the given key in the cache, if
+    /// it contains an unexpired entry and resets the expiration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use ttl_cache::TtlCache;
+    ///
+    /// let mut cache = TtlCache::new(2);
+    /// let duration = Duration::from_secs(30);
+    ///
+    /// cache.insert(1, "a", duration);
+    /// cache.insert(2, "b", duration);
+    /// cache.insert(2, "c", duration);
+    /// cache.insert(3, "d", duration);
+    ///
+    /// assert_eq!(cache.get_mut_prolong(&1), None);
+    /// assert_eq!(cache.get_mut_prolong(&2), Some(&mut "c"));
+    /// ```
+    pub fn get_mut_prolong<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        let to_ret = self.map.get_mut(k).and_then(|x| {
+            if x.is_expired() {
+                None
+            } else {
+                x.reset_duration();
+                Some(&mut x.value)
+            }
+        });
+        #[cfg(feature = "stats")]
+        {
+            if to_ret.is_some() {
+                self.hits.fetch_add(1, Ordering::Relaxed);
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        to_ret
+    }
+
+    /// Sets the expiration of the entry pointed to by the given key to
+    /// now + the originally given duration
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use ttl_cache::TtlCache;
+    ///
+    /// let mut cache = TtlCache::new(2);
+    ///
+    /// cache.insert(2, "a", Duration::from_secs(30));
+    /// 
+    /// cache.reset_ttl(&2)
+    /// ```
+    pub fn reset_ttl<Q: ?Sized>(&mut self, k: &Q)
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        if let Some(entry) = self.map.get_mut(k) {
+            if !entry.is_expired() {
+                entry.reset_duration()
+            }
+        }
     }
 
     /// Removes the given key from the cache and returns its corresponding value.
