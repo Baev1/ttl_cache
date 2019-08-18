@@ -7,7 +7,7 @@ use ttl_cache::TtlCache;
 #[test]
 fn test_put_and_get() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(2);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, duration);
     cache.insert(2, 20, duration);
     assert_eq!(cache.get(&1), Some(&10));
@@ -17,7 +17,7 @@ fn test_put_and_get() {
 #[test]
 fn test_put_and_get_mut() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(2);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, duration);
     cache.insert(2, 20, duration);
     assert_eq!(cache.get_mut(&1), Some(&mut 10));
@@ -27,7 +27,7 @@ fn test_put_and_get_mut() {
 #[test]
 fn test_get_mut_change() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(2);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, duration);
     assert_eq!(cache.get(&1), Some(&10));
     cache.get_mut(&1).map(|v| *v = 20);
@@ -37,7 +37,7 @@ fn test_get_mut_change() {
 #[test]
 fn test_put_update() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(1);
+    let mut cache = TtlCache::new();
     cache.insert("1", 10, duration);
     cache.insert("1", 19, duration);
     assert_eq!(cache.get("1"), Some(&19));
@@ -46,7 +46,7 @@ fn test_put_update() {
 #[test]
 fn test_contains_key() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(1);
+    let mut cache = TtlCache::new();
     cache.insert("1", 10, duration);
     assert_eq!(cache.contains_key("1"), true);
 }
@@ -54,7 +54,7 @@ fn test_contains_key() {
 #[test]
 fn test_expire_value() {
     let duration = Duration::from_millis(1);
-    let mut cache = TtlCache::new(1);
+    let mut cache = TtlCache::new();
     cache.insert("1", 10, duration);
     sleep(Duration::from_millis(10));
     assert_eq!(cache.contains_key("1"), false);
@@ -63,7 +63,7 @@ fn test_expire_value() {
 #[test]
 fn test_reset_ttl() {
     let duration = Duration::from_millis(10);
-    let mut cache = TtlCache::new(1);
+    let mut cache = TtlCache::new();
     cache.insert("1", 10, duration);
     sleep(Duration::from_millis(5));
     cache.reset_ttl("1");
@@ -74,7 +74,7 @@ fn test_reset_ttl() {
 #[test]
 fn test_pop() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(2);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, duration);
     cache.insert(2, 20, duration);
     let opt1 = cache.remove(&1);
@@ -84,21 +84,9 @@ fn test_pop() {
 }
 
 #[test]
-fn test_change_capacity() {
-    let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(2);
-    assert_eq!(cache.capacity(), 2);
-    cache.insert(1, 10, duration);
-    cache.insert(2, 20, duration);
-    cache.set_capacity(1);
-    assert!(cache.get(&1).is_none());
-    assert_eq!(cache.capacity(), 1);
-}
-
-#[test]
 fn test_remove() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(3);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, duration);
     cache.insert(2, 20, duration);
     cache.insert(3, 30, duration);
@@ -120,7 +108,7 @@ fn test_remove() {
 #[test]
 fn test_clear() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(2);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, duration);
     cache.insert(2, 20, duration);
     cache.clear();
@@ -131,7 +119,7 @@ fn test_clear() {
 #[test]
 fn test_iter() {
     let duration = Duration::from_secs(60 * 60);
-    let mut cache = TtlCache::new(3);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, duration);
     cache.insert(2, 20, duration);
     cache.insert(3, 30, duration);
@@ -158,7 +146,7 @@ fn test_iter() {
 #[test]
 fn test_iter_w_expired() {
     let duration = Duration::from_millis(100);
-    let mut cache = TtlCache::new(3);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, duration);
     sleep(Duration::from_millis(200));
     cache.insert(2, 20, duration);
@@ -180,7 +168,7 @@ fn test_iter_w_expired() {
 
 #[test]
 fn test() {
-    let mut cache = TtlCache::new(3);
+    let mut cache = TtlCache::new();
     cache.insert(1, 10, Duration::from_millis(300));
     cache.insert(2, 20, Duration::from_millis(10));
     cache.insert(3, 30, Duration::from_millis(300));
