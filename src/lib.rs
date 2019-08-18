@@ -132,7 +132,6 @@ impl<V> InternalEntry<V> {
 /// A time sensitive cache.
 pub struct TtlCache<K: Eq + Hash, V, S: BuildHasher = RandomState> {
     map: LinkedHashMap<K, InternalEntry<V>, S>,
-    max_size: usize,
     #[cfg(feature = "stats")]
     hits: AtomicUsize,
     #[cfg(feature = "stats")]
@@ -142,19 +141,18 @@ pub struct TtlCache<K: Eq + Hash, V, S: BuildHasher = RandomState> {
 }
 
 impl<K: Eq + Hash, V> TtlCache<K, V> {
-    /// Creates an empty cache that can hold at most `capacity` items.
+    /// Creates an empty cache
     ///
     /// # Examples
     ///
     /// ```
     /// use ttl_cache::TtlCache;
     ///
-    /// let mut cache: TtlCache<i32, &str> = TtlCache::new(10);
+    /// let mut cache: TtlCache<i32, &str> = TtlCache::new();
     /// ```
-    pub fn new(capacity: usize) -> Self {
+    pub fn new() -> Self {
         TtlCache {
             map: LinkedHashMap::new(),
-            max_size: capacity,
             #[cfg(feature = "stats")]
             hits: AtomicUsize::new(0),
             #[cfg(feature = "stats")]
@@ -165,13 +163,19 @@ impl<K: Eq + Hash, V> TtlCache<K, V> {
     }
 }
 
+/// Creates an empty cache as the default
+impl<K: Eq + Hash, V> Default for TtlCache<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K: Eq + Hash, V, S: BuildHasher> TtlCache<K, V, S> {
     /// Creates an empty cache that can hold at most `capacity` items
     /// with the given hash builder.
-    pub fn with_hasher(capacity: usize, hash_builder: S) -> Self {
+    pub fn with_hasher(hash_builder: S) -> Self {
         TtlCache {
             map: LinkedHashMap::with_hasher(hash_builder),
-            max_size: capacity,
             #[cfg(feature = "stats")]
             hits: AtomicUsize::new(0),
             #[cfg(feature = "stats")]
@@ -218,11 +222,9 @@ impl<K: Eq + Hash, V, S: BuildHasher> TtlCache<K, V, S> {
     /// assert_eq!(cache.get(&2), Some(&"b"));
     /// ```
     pub fn insert(&mut self, k: K, v: V, ttl: Duration) -> Option<V> {
+        self.remove_expired();
         let to_insert = InternalEntry::new(v, ttl);
         let old_val = self.map.insert(k, to_insert);
-        if self.len() > self.capacity() {
-            self.remove_oldest();
-        }
         old_val.and_then(|x| if x.is_expired() { None } else { Some(x.value) })
     }
 
@@ -405,62 +407,6 @@ impl<K: Eq + Hash, V, S: BuildHasher> TtlCache<K, V, S> {
             .and_then(|x| if x.is_expired() { None } else { Some(x.value) })
     }
 
-    /// Returns the maximum number of key-value pairs the cache can hold.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use ttl_cache::TtlCache;
-    ///
-    /// let mut cache: TtlCache<i32, &str> = TtlCache::new(2);
-    /// assert_eq!(cache.capacity(), 2);
-    /// ```
-    pub fn capacity(&self) -> usize {
-        self.max_size
-    }
-
-    /// Sets the number of key-value pairs the cache can hold. Removes
-    /// oldest key-value pairs if necessary.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use ttl_cache::TtlCache;
-    ///
-    /// let mut cache = TtlCache::new(2);
-    /// let duration = Duration::from_secs(30);
-    ///
-    /// cache.insert(1, "a", duration);
-    /// cache.insert(2, "b", duration);
-    /// cache.insert(3, "c", duration);
-    ///
-    /// assert_eq!(cache.get(&1), None);
-    /// assert_eq!(cache.get(&2), Some(&"b"));
-    /// assert_eq!(cache.get(&3), Some(&"c"));
-    ///
-    /// cache.set_capacity(3);
-    /// cache.insert(1, "a", duration);
-    /// cache.insert(2, "b", duration);
-    ///
-    /// assert_eq!(cache.get(&1), Some(&"a"));
-    /// assert_eq!(cache.get(&2), Some(&"b"));
-    /// assert_eq!(cache.get(&3), Some(&"c"));
-    ///
-    /// cache.set_capacity(1);
-    ///
-    /// assert_eq!(cache.get(&1), None);
-    /// assert_eq!(cache.get(&2), Some(&"b"));
-    /// assert_eq!(cache.get(&3), None);
-    /// ```
-    pub fn set_capacity(&mut self, capacity: usize) {
-        for _ in capacity..self.len() {
-            self.remove_oldest();
-        }
-        self.max_size = capacity;
-    }
-
     /// Clears all values out of the cache
     pub fn clear(&mut self) {
         self.map.clear();
@@ -623,15 +569,7 @@ impl<K: Eq + Hash, V, S: BuildHasher> TtlCache<K, V, S> {
         self.since
     }
 
-    // This isn't made pubic because the length returned isn't exact. It can include expired values.
-    // If people find that they want this then I can include a length method that trims expired
-    // entries then returns the size, but I'd rather now.  One wouldn't expect a len() operation
-    // to change the contents of the structure.
-    fn len(&self) -> usize {
-        self.map.len()
-    }
-
-    fn remove_expired(&mut self) {
+    pub fn remove_expired(&mut self) {
         let should_pop_head = |map: &LinkedHashMap<K, InternalEntry<V>, S>| match map.front() {
             Some(entry) => entry.1.is_expired(),
             None => false,
@@ -639,10 +577,6 @@ impl<K: Eq + Hash, V, S: BuildHasher> TtlCache<K, V, S> {
         while should_pop_head(&self.map) {
             self.map.pop_front();
         }
-    }
-
-    fn remove_oldest(&mut self) {
-        self.map.pop_front();
     }
 }
 
@@ -654,7 +588,6 @@ where
     fn clone(&self) -> TtlCache<K, V> {
         TtlCache {
             map: self.map.clone(),
-            max_size: self.max_size,
             #[cfg(feature = "stats")]
             hits: AtomicUsize::new(self.hits.load(Ordering::Relaxed)),
             #[cfg(feature = "stats")]
